@@ -1,0 +1,32 @@
+{
+  "$schema": "https://go.kicad.org/pcm/schemas/v1",
+  "name": "Schaltplan Live-Ansicht",
+  "description": "Zeigt den Schaltplan des offenen Projekts live im Browser.",
+  "description_full": "Startet beim Laden durch KiCad einen kleinen lokalen Webserver (http://localhost:8765). Er erkennt das gerade geoeffnete Projekt selbst, exportiert dessen Schaltplan (alle Blaetter) per kicad-cli als SVG und aktualisiert die Browseransicht bei jedem Speichern. Der Server beendet sich, wenn KiCad geschlossen wird. Laeuft unter Linux, Windows und macOS. Ein Toolbar-Knopf im PCB-Editor oeffnet die Ansicht.",
+  "identifier": "com.github.jelli123.schematic-liveview",
+  "type": "plugin",
+  "author": {
+    "name": "jelli123",
+    "contact": {}
+  },
+  "license": "LGPL-3.0",
+  "resources": {},
+  "tags": [
+    "schematic",
+    "viewer",
+    "svg",
+    "live"
+  ],
+  "versions": [
+    {
+      "version": "1.1.0",
+      "status": "stable",
+      "kicad_version": "9.0",
+      "platforms": [
+        "linux",
+        "windows",
+        "macos"
+      ]
+    }
+  ]
+}
