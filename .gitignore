@@ -9,7 +9,8 @@ venv/
 dist/
 build/
 
-# Lokale Notizen
+# Lokale Notizen zu Problemen
+issues/
 ISSUE_*.md
 
 # Editor / OS
