@@ -25,7 +25,7 @@ import tempfile
 import threading
 import time
 
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 KICAD_PROCS = {"kicad", "eeschema", "pcbnew"}
 IDLE_EXIT_S = 20
 IS_WIN = sys.platform == "win32"

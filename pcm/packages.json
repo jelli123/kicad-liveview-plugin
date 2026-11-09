@@ -1,9 +1,9 @@
 {
   "packages": [
     {
-      "name": "Schaltplan Live-Ansicht",
-      "description": "Zeigt den Schaltplan des offenen Projekts live im Browser.",
-      "description_full": "Startet beim Laden durch KiCad einen kleinen lokalen Webserver (http://localhost:8765). Er erkennt das gerade geoeffnete Projekt selbst, exportiert dessen Schaltplan (alle Blaetter) per kicad-cli als SVG und aktualisiert die Browseransicht bei jedem Speichern. Der Server beendet sich, wenn KiCad geschlossen wird. Laeuft unter Linux, Windows und macOS. Ein Toolbar-Knopf im PCB-Editor oeffnet die Ansicht.",
+      "name": "Schaltplan Live-Ansicht / Schematic Live View",
+      "description": "Schaltplan live im Browser / Live schematic view in the browser",
+      "description_full": "Startet beim Laden durch KiCad einen kleinen lokalen Webserver (http://localhost:8765). Er erkennt das gerade geöffnete Projekt selbst, exportiert dessen Schaltplan (alle Blätter) per kicad-cli als SVG und aktualisiert die Browseransicht bei jedem Speichern. Zoomen, Verschieben und „An Fenster anpassen“ sind direkt im Browser möglich. Der Server beendet sich, wenn KiCad geschlossen wird. Läuft unter Linux, Windows und macOS. Ein Toolbar-Knopf im PCB-Editor öffnet die Ansicht.\n\nStarts a small local web server (http://localhost:8765) when KiCad loads the plugin. It detects the currently open project, exports its schematic (all sheets) as SVG via kicad-cli and refreshes the browser view every time you save. Zoom, pan and fit-to-window work right in the browser. The server exits when KiCad is closed. Runs on Linux, Windows and macOS. A toolbar button in the PCB editor opens the view.",
       "identifier": "com.github.jelli123.schematic-liveview",
       "type": "plugin",
       "author": {
@@ -19,6 +19,20 @@
         "live"
       ],
       "versions": [
+        {
+          "version": "1.2.1",
+          "status": "stable",
+          "kicad_version": "9.0",
+          "platforms": [
+            "linux",
+            "windows",
+            "macos"
+          ],
+          "download_url": "https://github.com/jelli123/kicad-liveview-plugin/releases/download/v1.2.1/schematic-liveview-1.2.1.zip",
+          "download_sha256": "72a95d5ad3728f60fe6b2607a13129125a7e79d689e947be26ce7328ec89338d",
+          "download_size": 23502,
+          "install_size": 22916
+        },
         {
           "version": "1.2.0",
           "status": "stable",
