@@ -25,7 +25,7 @@ import tempfile
 import threading
 import time
 
-VERSION = "1.2.1"
+VERSION = "1.2.2"
 KICAD_PROCS = {"kicad", "eeschema", "pcbnew"}
 IDLE_EXIT_S = 20
 IS_WIN = sys.platform == "win32"
@@ -172,8 +172,7 @@ def export(cli, sch, out):
         os.remove(f)
     if not cli:
         return [], "kicad-cli not found"  # Browser uebersetzt
-    p = subprocess.run([cli, "sch", "export", "svg", "--exclude-drawing-sheet",
-                        "-o", out, sch], capture_output=True, text=True,
+    p = subprocess.run([cli, "sch", "export", "svg", "-o", out, sch], capture_output=True, text=True,
                        creationflags=NO_WINDOW)
     root = os.path.splitext(os.path.basename(sch))[0]
     sheets = []
@@ -233,29 +232,29 @@ body{display:flex;flex-direction:column}
 #bar button:hover{background:#4a4a4a}
 #tabs button.on{background:#c8a24a;color:#111}
 #zoom{display:flex;gap:4px;align-items:center}
-#zoom button{min-width:26px}#zl{min-width:44px;text-align:center;opacity:.8}
+#zoom button{min-width:26px}#bar #zl{min-width:48px;background:none;opacity:.8}#bar #zl:hover{background:#3a3a3a;opacity:1}
 #wrap{flex:1;min-height:0;overflow:auto;display:flex;cursor:grab}
 #wrap.drag{cursor:grabbing;user-select:none}
 #wrap svg{flex:none;margin:auto;background:#fff;box-shadow:0 0 6px rgba(0,0,0,.15)}
 #msg{padding:40px;color:#555}
 </style></head><body>
 <div id="bar"><b id="proj">&hellip;</b><span id="tabs"></span>
-<span id="zoom"><button id="zo">&minus;</button><span id="zl"></span>
+<span id="zoom"><button id="zo">&minus;</button><button id="zl"></button>
 <button id="zi">+</button><button id="zf"></button></span>
 <span id="st"></span><span id="ver">v%VERSION%</span></div>
 <div id="wrap"><div id="msg"></div></div>
 <script>
 // Sprache: Deutsch, wenn der Browser Deutsch bevorzugt, sonst Englisch.
 const DE=/^de/i.test((navigator.languages&&navigator.languages[0])||navigator.language||'');
-const T=DE?{zo:'Verkleinern (-)',zi:'Vergrößern (+)',zf:'An Fenster anpassen',zfk:'An Fenster anpassen (0, Doppelklick)',
+const T=DE?{zo:'Verkleinern (-)',zl:'Originalgröße 100 %',zi:'Vergrößern (+)',zf:'An Fenster anpassen',zfk:'An Fenster anpassen (0, Doppelklick)',
  wait:'Warte auf KiCad-Projekt …',none:'Kein offenes KiCad-Projekt gefunden.',noproj:'kein Projekt',
  sch:'Schaltplan',err:'Fehler: ',at:'Stand ',gone:'Server beendet (KiCad geschlossen?)',
  'kicad-cli not found':'kicad-cli nicht gefunden'}
-:{zo:'Zoom out (-)',zi:'Zoom in (+)',zf:'Fit to window',zfk:'Fit to window (0, double-click)',
+:{zo:'Zoom out (-)',zl:'Actual size 100 %',zi:'Zoom in (+)',zf:'Fit to window',zfk:'Fit to window (0, double-click)',
  wait:'Waiting for KiCad project …',none:'No open KiCad project found.',noproj:'no project',
  sch:'Schematic',err:'Error: ',at:'Updated ',gone:'Server stopped (KiCad closed?)'};
 document.documentElement.lang=DE?'de':'en';
-document.getElementById('zo').title=T.zo;document.getElementById('zi').title=T.zi;
+document.getElementById('zo').title=T.zo;document.getElementById('zl').title=T.zl;document.getElementById('zi').title=T.zi;
 document.getElementById('zf').title=T.zfk;document.getElementById('zf').textContent=T.zf;
 document.getElementById('msg').textContent=T.wait;
 const W=document.getElementById('wrap'), MM=96/25.4, PAD=16, VER='%VERSION%';
@@ -281,6 +280,7 @@ function fitView(){fit=true;apply();}
 document.getElementById('zi').onclick=()=>zoomAt(1.25);
 document.getElementById('zo').onclick=()=>zoomAt(1/1.25);
 document.getElementById('zf').onclick=fitView;
+document.getElementById('zl').onclick=()=>zoomAt(MM/scale);
 W.addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();
  let d=e.deltaY*(e.deltaMode===1?33:e.deltaMode===2?400:1);d=Math.max(-200,Math.min(200,d));
  const wr=W.getBoundingClientRect();zoomAt(Math.exp(-d*0.002),e.clientX-wr.left,e.clientY-wr.top);},{passive:false});
