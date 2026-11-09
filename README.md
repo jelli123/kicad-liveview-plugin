@@ -30,15 +30,72 @@ Alle Hierarchie-Blätter sind über Reiter erreichbar.
 `KICAD_CONFIG_HOME` wird berücksichtigt. Ein abweichender `kicad-cli`-Pfad lässt
 sich über die Umgebungsvariable `KICAD_LIVEVIEW_CLI` setzen.
 
-## Bauen / Installieren / Entfernen
+## Installieren und Updates
+
+**Empfohlen – über das Repository (mit Update-Meldung):**
+
+1. KiCad → *Plugin and Content Manager* → **Repositories verwalten…**
+2. Neues Repository mit dieser URL hinzufügen:
+   ```
+   https://raw.githubusercontent.com/jelli123/kicad-liveview-plugin/main/pcm/repository.json
+   ```
+3. Repository oben im PCM auswählen, *Schaltplan Live-Ansicht* installieren,
+   Änderungen anwenden.
+
+KiCad meldet neue Versionen dann selbst; aktualisiert wird mit einem Klick im
+PCM. Ein noch laufender Server älterer Version wird beim nächsten Laden des
+Plugins automatisch beendet und neu gestartet, die Browseransicht lädt sich
+danach selbst neu. Die laufende Version steht rechts in der Kopfzeile.
+
+**Alternativ – aus Datei:** ZIP von der
+[Release-Seite](https://github.com/jelli123/kicad-liveview-plugin/releases)
+laden und im PCM über **Aus Datei installieren…** einspielen.
+
+Zum Entfernen im PCM auf *Deinstallieren* klicken.
+
+## Bedienung im Browser
+
+| Aktion | Maus / Taste |
+|---|---|
+| Vergrößern / Verkleinern | **+** / **−** in der Kopfzeile, Tasten `+` / `-`, Strg+Mausrad |
+| An Fenster anpassen | Knopf *An Fenster anpassen*, Taste `0`, Doppelklick |
+| Verschieben | Ziehen mit linker oder mittlerer Maustaste, Scrollbalken |
+| Blatt wechseln | Reiter in der Kopfzeile |
+
+Zoom und Ausschnitt bleiben beim Speichern in KiCad erhalten.
+
+## Bauen
 
 ```bash
 python3 build.py
 ```
 
-KiCad → *Plugin and Content Manager* → **Aus Datei installieren…** →
-`dist/schematic-liveview-<version>.zip`. Zum Entfernen im PCM auf
-*Deinstallieren* klicken.
+Erzeugt `dist/schematic-liveview-<version>.zip` und aktualisiert die
+Repository-Dateien in `pcm/` (`repository.json`, `packages.json`,
+`resources.zip`). Der Build ist reproduzierbar: Er packt nur von Git verwaltete
+Dateien unter `src/`, unkomprimiert und mit festen Zeitstempeln, sodass lokal
+und auf GitHub dieselbe SHA-256 entsteht. `python3 build.py --icons` erzeugt die
+Icons neu.
+
+## Neue Version veröffentlichen
+
+1. Versionsnummer in `src/metadata.json` **und** `VERSION` in
+   `src/plugins/liveview_server.py` erhöhen (der Build bricht bei Abweichung ab).
+2. `python3 build.py`
+3. Alles einschließlich `pcm/` committen, Tag setzen und pushen:
+   ```bash
+   git commit -am "Version X.Y.Z"
+   git tag vX.Y.Z
+   git push origin main vX.Y.Z
+   ```
+
+Die GitHub-Action [release.yml](.github/workflows/release.yml) prüft dann, dass
+Tag und Version übereinstimmen, führt die Tests aus, baut das Paket, vergleicht
+dessen SHA-256 mit `pcm/packages.json` und hängt das ZIP an ein neues Release.
+Bis das Release fertig ist (ca. 1 min), sieht der PCM die neue Version schon,
+kann sie aber noch nicht laden.
+
+## Entwicklung
 
 Tests (simulieren unter Linux auch die Windows- und macOS-Zweige):
 

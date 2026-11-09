@@ -1,0 +1,22 @@
+{
+  "$schema": "https://go.kicad.org/pcm/schemas/v1#/definitions/Repository",
+  "name": "jelli123 KiCad-Plugins",
+  "maintainer": {
+    "name": "jelli123",
+    "contact": {
+      "web": "https://github.com/jelli123/kicad-liveview-plugin"
+    }
+  },
+  "packages": {
+    "url": "https://raw.githubusercontent.com/jelli123/kicad-liveview-plugin/main/pcm/packages.json",
+    "sha256": "283f83113e03af77d01d85822e8b2f92a2ff93b020f8fecf7b2e032b306f6a26",
+    "update_timestamp": 1794219801,
+    "update_time_utc": "2026-11-09 10:23:21"
+  },
+  "resources": {
+    "url": "https://raw.githubusercontent.com/jelli123/kicad-liveview-plugin/main/pcm/resources.zip",
+    "sha256": "6d5846df269df4c39dbc594c8b82d55c9a2fbe23c1942a159ebfded874345e87",
+    "update_timestamp": 1794219801,
+    "update_time_utc": "2026-11-09 10:23:21"
+  }
+}

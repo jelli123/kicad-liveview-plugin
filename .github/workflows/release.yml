@@ -1,0 +1,38 @@
+name: Release
+
+# Beim Push eines Tags vX.Y.Z: Paket bauen, gegen pcm/packages.json pruefen
+# und als GitHub-Release veroeffentlichen. Der KiCad-PCM laedt es von dort.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Tag passt zur Version
+        run: |
+          v=$(python3 -c "import json;print(json.load(open('src/metadata.json'))['versions'][0]['version'])")
+          test "v$v" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME != Version v$v"; exit 1; }
+
+      - name: Tests
+        run: python3 tests/test_platforms.py
+
+      - name: Paket bauen und pruefen
+        run: python3 build.py --check
+
+      - name: Release erstellen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/schematic-liveview-*.zip \
+            --title "$GITHUB_REF_NAME" --generate-notes
