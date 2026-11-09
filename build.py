@@ -5,6 +5,7 @@ Installation in KiCad: Plugin and Content Manager -> "Aus Datei installieren..."
 """
 import json
 import os
+import re
 import struct
 import zipfile
 import zlib
@@ -53,12 +54,18 @@ def main():
     png(os.path.join(SRC, "resources", "icon.png"), 64)
     meta = json.load(open(os.path.join(SRC, "metadata.json"), encoding="utf-8"))
     version = meta["versions"][0]["version"]
+    with open(os.path.join(SRC, "plugins", "liveview_server.py"), encoding="utf-8") as f:
+        m = re.search(r'^VERSION = "([^"]+)"', f.read(), re.M)
+    if not m or m.group(1) != version:
+        raise SystemExit("Version in liveview_server.py (%s) passt nicht zu metadata.json (%s)"
+                         % (m and m.group(1), version))
     os.makedirs(os.path.join(HERE, "dist"), exist_ok=True)
     out = os.path.join(HERE, "dist", "schematic-liveview-%s.zip" % version)
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-        for root, _, files in os.walk(SRC):
+        for root, dirs, files in os.walk(SRC):
+            dirs[:] = [d for d in dirs if d not in ("issues", "__pycache__")]
             for f in sorted(files):
-                if f.endswith(".pyc") or "__pycache__" in root:
+                if f.endswith(".pyc") or f.startswith("ISSUE_"):
                     continue
                 full = os.path.join(root, f)
                 z.write(full, os.path.relpath(full, SRC))

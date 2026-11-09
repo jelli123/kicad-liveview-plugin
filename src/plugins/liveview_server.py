@@ -25,6 +25,7 @@ import tempfile
 import threading
 import time
 
+VERSION = "1.2.0"
 KICAD_PROCS = {"kicad", "eeschema", "pcbnew"}
 IDLE_EXIT_S = 20
 IS_WIN = sys.platform == "win32"
@@ -227,7 +228,7 @@ PAGE = """<!doctype html><html lang="de"><head><meta charset="utf-8">
 html,body{margin:0;height:100%;background:#f5f4ee;font:13px system-ui,sans-serif}
 body{display:flex;flex-direction:column}
 #bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 10px;background:#222;color:#ddd}
-#bar b{color:#fff}#st{margin-left:auto;opacity:.7}
+#bar b{color:#fff}#st{margin-left:auto;opacity:.7}#ver{opacity:.5}
 #bar button{background:#3a3a3a;color:#ddd;border:0;border-radius:3px;padding:3px 8px;cursor:pointer;font:inherit}
 #bar button:hover{background:#4a4a4a}
 #tabs button.on{background:#c8a24a;color:#111}
@@ -242,10 +243,10 @@ body{display:flex;flex-direction:column}
 <span id="zoom"><button id="zo" title="Verkleinern (-)">&minus;</button><span id="zl"></span>
 <button id="zi" title="Vergr&ouml;&szlig;ern (+)">+</button>
 <button id="zf" title="An Fenster anpassen (0)">An Fenster anpassen</button></span>
-<span id="st"></span></div>
+<span id="st"></span><span id="ver">v%VERSION%</span></div>
 <div id="wrap"><div id="msg">Warte auf KiCad-Projekt &hellip;</div></div>
 <script>
-const W=document.getElementById('wrap'), MM=96/25.4, PAD=16;
+const W=document.getElementById('wrap'), MM=96/25.4, PAD=16, VER='%VERSION%';
 let ver=-1, sel=0, names=[], scale=1, fit=true;
 function svg(){return W.querySelector('svg');}
 function dims(s){const v=s.viewBox&&s.viewBox.baseVal;
@@ -292,6 +293,7 @@ async function load(){if(!names.length){W.innerHTML=
  const l=W.scrollLeft,t=W.scrollTop;W.innerHTML=txt;apply();
  if(!fit){W.scrollLeft=l;W.scrollTop=t;}}
 async function tick(){try{const s=await (await fetch('/state')).json();
+ if(s.version!==VER){location.reload();return;}
  document.getElementById('proj').textContent=s.project||'kein Projekt';
  document.title=(s.project||'Schaltplan')+' \\u00b7 Live';
  if(s.ver!==ver){ver=s.ver;names=s.sheets;if(sel>=names.length)sel=0;tabs();await load();}
@@ -299,7 +301,7 @@ async function tick(){try{const s=await (await fetch('/state')).json();
   'Stand '+new Date().toLocaleTimeString();
 }catch(e){document.getElementById('st').textContent='Server beendet (KiCad geschlossen?)';}}
 setInterval(tick,1500);tick();
-</script></body></html>""".encode()
+</script></body></html>""".replace("%VERSION%", VERSION).encode()
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -323,7 +325,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 name = None
                 if state["sch"]:
                     name = os.path.splitext(os.path.basename(state["sch"]))[0]
-                body = json.dumps({"ver": state["ver"], "project": name,
+                body = json.dumps({"version": VERSION, "ver": state["ver"], "project": name,
                                    "sheets": [n for n, _ in state["sheets"]],
                                    "error": html.escape(state["error"][:200])})
                 return self.send(body.encode(), "application/json")
@@ -334,6 +336,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return self.send(state["sheets"][i][1], "image/svg+xml")
                 return self.send(b"", "text/plain", 404)
         self.send(PAGE, "text/html; charset=utf-8")
+
+    def do_POST(self):
+        # Vom Plugin genutzt, um einen veralteten Server abzuloesen.
+        if self.path == "/quit":
+            self.send(b"bye", "text/plain")
+            threading.Timer(0.2, os._exit, (0,)).start()
+        else:
+            self.send(b"", "text/plain", 404)
 
 
 class Server(http.server.ThreadingHTTPServer):

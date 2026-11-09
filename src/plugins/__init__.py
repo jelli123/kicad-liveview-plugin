@@ -6,12 +6,16 @@ anzeigt und bei jedem Speichern aktualisiert. Der Server beendet sich, wenn
 KiCad geschlossen wird. Der Toolbar-Knopf im PCB-Editor oeffnet die Ansicht.
 Linux, Windows und macOS.
 """
+import json
 import os
+import re
 import shutil
 import socket
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.request
 import webbrowser
 
 import pcbnew
@@ -21,6 +25,12 @@ URL = "http://localhost:%d" % PORT
 PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
 SERVER = os.path.join(PLUGIN_DIR, "liveview_server.py")
 IS_WIN = sys.platform == "win32"
+
+
+def _plugin_version():
+    with open(SERVER, encoding="utf-8") as f:
+        m = re.search(r'^VERSION = "([^"]+)"', f.read(), re.M)
+    return m.group(1) if m else None
 
 
 def _server_running():
@@ -77,9 +87,31 @@ def _kicad_cli_hint():
     return None
 
 
+def _running_version():
+    try:
+        with urllib.request.urlopen(URL + "/state", timeout=1) as r:
+            return json.load(r).get("version")
+    except Exception:
+        return None
+
+
+def _stop_server():
+    try:
+        urllib.request.urlopen(urllib.request.Request(URL + "/quit", data=b"", method="POST"),
+                               timeout=1).close()
+    except Exception:
+        pass  # alte Versionen kennen /quit nicht
+    for _ in range(20):
+        if not _server_running():
+            return True
+        time.sleep(0.1)
+    return False
+
+
 def ensure_server():
     if _server_running():
-        return
+        if _running_version() == _plugin_version() or not _stop_server():
+            return
     py = _python()
     if not py:
         raise RuntimeError("kein Python-Interpreter gefunden")
