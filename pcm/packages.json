@@ -29,9 +29,9 @@
             "macos"
           ],
           "download_url": "https://github.com/jelli123/kicad-liveview-plugin/releases/download/v1.2.2/schematic-liveview-1.2.2.zip",
-          "download_sha256": "ce1ee9a62b8cb7ee46da7bf4201e8674ef4ce3e4643c178faa51c911e657fa59",
-          "download_size": 25360,
-          "install_size": 24774
+          "download_sha256": "3970f85d8a10e7d4a2e7cc53d2df9ca01d6dc779853f6047d24efaa6eca3aafe",
+          "download_size": 26712,
+          "install_size": 26126
         },
         {
           "version": "1.2.1",

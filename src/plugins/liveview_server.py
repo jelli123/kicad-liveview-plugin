@@ -40,6 +40,7 @@ state = {
     "ver": 0,
     "sheets": [],         # [(name, svg-bytes)]
     "error": "",
+    "frame": True,        # Blattrahmen mit exportieren
 }
 lock = threading.Lock()
 
@@ -167,12 +168,15 @@ def sch_signature(sch):
     return tuple(sig)
 
 
-def export(cli, sch, out):
+def export(cli, sch, out, frame=True):
     for f in glob.glob(os.path.join(out, "*.svg")):
         os.remove(f)
     if not cli:
         return [], "kicad-cli not found"  # Browser uebersetzt
-    p = subprocess.run([cli, "sch", "export", "svg", "-o", out, sch], capture_output=True, text=True,
+    cmd = [cli, "sch", "export", "svg", "-o", out, sch]
+    if not frame:
+        cmd.insert(4, "--exclude-drawing-sheet")
+    p = subprocess.run(cmd, capture_output=True, text=True,
                        creationflags=NO_WINDOW)
     root = os.path.splitext(os.path.basename(sch))[0]
     sheets = []
@@ -201,10 +205,11 @@ def worker(fixed_sch, cli, out):
                 sch = os.path.splitext(pro)[0] + ".kicad_sch" if pro else None
 
             if sch and os.path.exists(sch):
-                sig = sch_signature(sch)
+                frame = state["frame"]
+                sig = (frame,) + sch_signature(sch)  # Umschalten des Rahmens = neu exportieren
                 if sch != state["sch"] or sig != state["sig"]:
                     time.sleep(0.3)  # Speichervorgang abwarten
-                    sheets, err = export(cli, sch, out)
+                    sheets, err = export(cli, sch, out, frame)
                     with lock:
                         state.update(project=pro, sch=sch, sig=sig, sheets=sheets,
                                      error=err, ver=state["ver"] + 1)
@@ -230,7 +235,7 @@ body{display:flex;flex-direction:column}
 #bar b{color:#fff}#st{margin-left:auto;opacity:.7}#ver{opacity:.5}
 #bar button{background:#3a3a3a;color:#ddd;border:0;border-radius:3px;padding:3px 8px;cursor:pointer;font:inherit}
 #bar button:hover{background:#4a4a4a}
-#tabs button.on{background:#c8a24a;color:#111}
+#tabs button.on,#bar #fr.on{background:#c8a24a;color:#111}#bar #fr:disabled{opacity:.5;cursor:wait}
 #zoom{display:flex;gap:4px;align-items:center}
 #zoom button{min-width:26px}#bar #zl{min-width:48px;background:none;opacity:.8}#bar #zl:hover{background:#3a3a3a;opacity:1}
 #wrap{flex:1;min-height:0;overflow:auto;display:flex;cursor:grab}
@@ -241,22 +246,29 @@ body{display:flex;flex-direction:column}
 <div id="bar"><b id="proj">&hellip;</b><span id="tabs"></span>
 <span id="zoom"><button id="zo">&minus;</button><button id="zl"></button>
 <button id="zi">+</button><button id="zf"></button></span>
+<button id="fr"></button>
 <span id="st"></span><span id="ver">v%VERSION%</span></div>
 <div id="wrap"><div id="msg"></div></div>
 <script>
 // Sprache: Deutsch, wenn der Browser Deutsch bevorzugt, sonst Englisch.
 const DE=/^de/i.test((navigator.languages&&navigator.languages[0])||navigator.language||'');
-const T=DE?{zo:'Verkleinern (-)',zl:'Originalgröße 100 %',zi:'Vergrößern (+)',zf:'An Fenster anpassen',zfk:'An Fenster anpassen (0, Doppelklick)',
+const T=DE?{fr:'Rahmen',frt:'Blattrahmen ein-/ausblenden',zo:'Verkleinern (-)',zl:'Originalgröße 100 %',zi:'Vergrößern (+)',zf:'An Fenster anpassen',zfk:'An Fenster anpassen (0, Doppelklick)',
  wait:'Warte auf KiCad-Projekt …',none:'Kein offenes KiCad-Projekt gefunden.',noproj:'kein Projekt',
  sch:'Schaltplan',err:'Fehler: ',at:'Stand ',gone:'Server beendet (KiCad geschlossen?)',
  'kicad-cli not found':'kicad-cli nicht gefunden'}
-:{zo:'Zoom out (-)',zl:'Actual size 100 %',zi:'Zoom in (+)',zf:'Fit to window',zfk:'Fit to window (0, double-click)',
+:{fr:'Frame',frt:'Show/hide drawing sheet',zo:'Zoom out (-)',zl:'Actual size 100 %',zi:'Zoom in (+)',zf:'Fit to window',zfk:'Fit to window (0, double-click)',
  wait:'Waiting for KiCad project …',none:'No open KiCad project found.',noproj:'no project',
  sch:'Schematic',err:'Error: ',at:'Updated ',gone:'Server stopped (KiCad closed?)'};
 document.documentElement.lang=DE?'de':'en';
 document.getElementById('zo').title=T.zo;document.getElementById('zl').title=T.zl;document.getElementById('zi').title=T.zi;
 document.getElementById('zf').title=T.zfk;document.getElementById('zf').textContent=T.zf;
 document.getElementById('msg').textContent=T.wait;
+const FR=document.getElementById('fr');FR.textContent=T.fr;FR.title=T.frt;
+let frame=null;  // gewuenschter Rahmen-Zustand, im Browser gemerkt
+try{const v=localStorage.getItem('frame');if(v!==null)frame=v==='1';}catch(e){}
+function setFrame(on){frame=on;try{localStorage.setItem('frame',on?'1':'0');}catch(e){}
+ FR.disabled=true;fetch('/frame/'+(on?1:0),{method:'POST'});}
+FR.onclick=()=>setFrame(!FR.classList.contains('on'));
 const W=document.getElementById('wrap'), MM=96/25.4, PAD=16, VER='%VERSION%';
 let ver=-1, sel=0, names=[], scale=1, fit=true;
 function svg(){return W.querySelector('svg');}
@@ -306,6 +318,9 @@ async function load(){if(!names.length){W.innerHTML=
  if(!fit){W.scrollLeft=l;W.scrollTop=t;}}
 async function tick(){try{const s=await (await fetch('/state')).json();
  if(s.version!==VER){location.reload();return;}
+ if(frame!==null&&frame!==s.frame)setFrame(frame);
+ else FR.disabled=s.frame!==s.frame_shown&&!!s.project;
+ FR.classList.toggle('on',frame!==null?frame:s.frame);FR.hidden=!s.project;
  document.getElementById('proj').textContent=s.project||T.noproj;
  document.title=(s.project||T.sch)+' \\u00b7 Live';
  if(s.ver!==ver){ver=s.ver;names=s.sheets;if(sel>=names.length)sel=0;tabs();await load();}
@@ -339,6 +354,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     name = os.path.splitext(os.path.basename(state["sch"]))[0]
                 body = json.dumps({"version": VERSION, "ver": state["ver"], "project": name,
                                    "sheets": [n for n, _ in state["sheets"]],
+                                   "frame": state["frame"],
+                                   "frame_shown": bool(state["sig"] and state["sig"][0]),
                                    "error": html.escape(state["error"][:200])})
                 return self.send(body.encode(), "application/json")
             m = re.fullmatch(r"/svg/(\d+)", path)
@@ -354,6 +371,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.path == "/quit":
             self.send(b"bye", "text/plain")
             threading.Timer(0.2, os._exit, (0,)).start()
+        elif self.path in ("/frame/0", "/frame/1"):
+            with lock:
+                state["frame"] = self.path.endswith("1")
+            self.send(b"ok", "text/plain")
         else:
             self.send(b"", "text/plain", 404)
 

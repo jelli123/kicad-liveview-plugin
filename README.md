@@ -62,6 +62,7 @@ Zum Entfernen im PCM auf *Deinstallieren* klicken.
 | Vergrößern / Verkleinern | **+** / **−** in der Kopfzeile, Tasten `+` / `-`, Strg+Mausrad |
 | An Fenster anpassen | Knopf *An Fenster anpassen*, Taste `0`, Doppelklick |
 | Originalgröße (100 %) | Klick auf die Prozentanzeige |
+| Blattrahmen ein/aus | Knopf *Rahmen* (wird im Browser gemerkt) |
 | Verschieben | Ziehen mit linker oder mittlerer Maustaste, Scrollbalken |
 | Blatt wechseln | Reiter in der Kopfzeile |
 
@@ -189,6 +190,7 @@ To remove it, click *Uninstall* in the PCM.
 | Zoom in / out | **+** / **−** in the header, keys `+` / `-`, Ctrl+mouse wheel |
 | Fit to window | *Fit to window* button, key `0`, double-click |
 | Actual size (100 %) | click the percentage display |
+| Drawing sheet on/off | *Frame* button (remembered by the browser) |
 | Pan | drag with left or middle mouse button, scroll bars |
 | Switch sheet | tabs in the header |
 
