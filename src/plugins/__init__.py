@@ -132,11 +132,35 @@ def ensure_server():
     log.close()
 
 
+def _german():
+    """True, wenn KiCad (bzw. das System) auf Deutsch eingestellt ist."""
+    try:
+        import wx
+        loc = wx.GetLocale()
+        if loc and loc.GetCanonicalName():
+            return loc.GetCanonicalName().lower().startswith("de")
+    except Exception:
+        pass
+    for var in ("LC_ALL", "LC_MESSAGES", "LANG"):
+        if os.environ.get(var):
+            return os.environ[var].lower().startswith("de")
+    try:
+        import locale
+        return (locale.getlocale()[0] or "").lower().startswith("de")
+    except Exception:
+        return False
+
+
 class SchematicLiveView(pcbnew.ActionPlugin):
     def defaults(self):
-        self.name = "Schaltplan Live-Ansicht"
-        self.category = "Ansicht"
-        self.description = "Zeigt den Schaltplan des offenen Projekts live im Browser"
+        if _german():
+            self.name = "Schaltplan Live-Ansicht"
+            self.category = "Ansicht"
+            self.description = "Zeigt den Schaltplan des offenen Projekts live im Browser"
+        else:
+            self.name = "Schematic Live View"
+            self.category = "View"
+            self.description = "Shows the schematic of the open project live in the browser"
         self.show_toolbar_button = True
         self.icon_file_name = os.path.join(PLUGIN_DIR, "icon.png")
 

@@ -171,7 +171,7 @@ def export(cli, sch, out):
     for f in glob.glob(os.path.join(out, "*.svg")):
         os.remove(f)
     if not cli:
-        return [], "kicad-cli nicht gefunden"
+        return [], "kicad-cli not found"  # Browser uebersetzt
     p = subprocess.run([cli, "sch", "export", "svg", "--exclude-drawing-sheet",
                         "-o", out, sch], capture_output=True, text=True,
                        creationflags=NO_WINDOW)
@@ -223,7 +223,7 @@ def worker(fixed_sch, cli, out):
 # --------------------------------------------------------------------------
 PAGE = """<!doctype html><html lang="de"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Schaltplan Live</title>
+<title>Schematic Live</title>
 <style>
 html,body{margin:0;height:100%;background:#f5f4ee;font:13px system-ui,sans-serif}
 body{display:flex;flex-direction:column}
@@ -240,12 +240,24 @@ body{display:flex;flex-direction:column}
 #msg{padding:40px;color:#555}
 </style></head><body>
 <div id="bar"><b id="proj">&hellip;</b><span id="tabs"></span>
-<span id="zoom"><button id="zo" title="Verkleinern (-)">&minus;</button><span id="zl"></span>
-<button id="zi" title="Vergr&ouml;&szlig;ern (+)">+</button>
-<button id="zf" title="An Fenster anpassen (0)">An Fenster anpassen</button></span>
+<span id="zoom"><button id="zo">&minus;</button><span id="zl"></span>
+<button id="zi">+</button><button id="zf"></button></span>
 <span id="st"></span><span id="ver">v%VERSION%</span></div>
-<div id="wrap"><div id="msg">Warte auf KiCad-Projekt &hellip;</div></div>
+<div id="wrap"><div id="msg"></div></div>
 <script>
+// Sprache: Deutsch, wenn der Browser Deutsch bevorzugt, sonst Englisch.
+const DE=/^de/i.test((navigator.languages&&navigator.languages[0])||navigator.language||'');
+const T=DE?{zo:'Verkleinern (-)',zi:'Vergrößern (+)',zf:'An Fenster anpassen',zfk:'An Fenster anpassen (0, Doppelklick)',
+ wait:'Warte auf KiCad-Projekt …',none:'Kein offenes KiCad-Projekt gefunden.',noproj:'kein Projekt',
+ sch:'Schaltplan',err:'Fehler: ',at:'Stand ',gone:'Server beendet (KiCad geschlossen?)',
+ 'kicad-cli not found':'kicad-cli nicht gefunden'}
+:{zo:'Zoom out (-)',zi:'Zoom in (+)',zf:'Fit to window',zfk:'Fit to window (0, double-click)',
+ wait:'Waiting for KiCad project …',none:'No open KiCad project found.',noproj:'no project',
+ sch:'Schematic',err:'Error: ',at:'Updated ',gone:'Server stopped (KiCad closed?)'};
+document.documentElement.lang=DE?'de':'en';
+document.getElementById('zo').title=T.zo;document.getElementById('zi').title=T.zi;
+document.getElementById('zf').title=T.zfk;document.getElementById('zf').textContent=T.zf;
+document.getElementById('msg').textContent=T.wait;
 const W=document.getElementById('wrap'), MM=96/25.4, PAD=16, VER='%VERSION%';
 let ver=-1, sel=0, names=[], scale=1, fit=true;
 function svg(){return W.querySelector('svg');}
@@ -288,18 +300,18 @@ function tabs(){const t=document.getElementById('tabs');t.innerHTML='';
  if(names.length<2)return;names.forEach((n,i)=>{const b=document.createElement('button');
  b.textContent=n;if(i===sel)b.className='on';b.onclick=()=>{sel=i;fit=true;tabs();load();};t.appendChild(b);});}
 async function load(){if(!names.length){W.innerHTML=
- '<div id="msg">Kein offenes KiCad-Projekt gefunden.</div>';apply();return;}
+ '<div id="msg"></div>';W.firstChild.textContent=T.none;apply();return;}
  const r=await fetch('/svg/'+sel+'?v='+ver);const txt=await r.text();
  const l=W.scrollLeft,t=W.scrollTop;W.innerHTML=txt;apply();
  if(!fit){W.scrollLeft=l;W.scrollTop=t;}}
 async function tick(){try{const s=await (await fetch('/state')).json();
  if(s.version!==VER){location.reload();return;}
- document.getElementById('proj').textContent=s.project||'kein Projekt';
- document.title=(s.project||'Schaltplan')+' \\u00b7 Live';
+ document.getElementById('proj').textContent=s.project||T.noproj;
+ document.title=(s.project||T.sch)+' \\u00b7 Live';
  if(s.ver!==ver){ver=s.ver;names=s.sheets;if(sel>=names.length)sel=0;tabs();await load();}
- document.getElementById('st').textContent=(s.error?'Fehler: '+s.error+' \\u00b7 ':'')+
-  'Stand '+new Date().toLocaleTimeString();
-}catch(e){document.getElementById('st').textContent='Server beendet (KiCad geschlossen?)';}}
+ document.getElementById('st').textContent=(s.error?T.err+(T[s.error]||s.error)+' \\u00b7 ':'')+
+  T.at+new Date().toLocaleTimeString();
+}catch(e){document.getElementById('st').textContent=T.gone;}}
 setInterval(tick,1500);tick();
 </script></body></html>""".replace("%VERSION%", VERSION).encode()
 
