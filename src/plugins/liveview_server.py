@@ -225,25 +225,72 @@ PAGE = """<!doctype html><html lang="de"><head><meta charset="utf-8">
 <title>Schaltplan Live</title>
 <style>
 html,body{margin:0;height:100%;background:#f5f4ee;font:13px system-ui,sans-serif}
-#bar{position:fixed;top:0;left:0;right:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center;
- padding:6px 10px;background:#222;color:#ddd;z-index:2}
+body{display:flex;flex-direction:column}
+#bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 10px;background:#222;color:#ddd}
 #bar b{color:#fff}#st{margin-left:auto;opacity:.7}
-#tabs button{background:#3a3a3a;color:#ddd;border:0;border-radius:3px;padding:3px 8px;cursor:pointer}
+#bar button{background:#3a3a3a;color:#ddd;border:0;border-radius:3px;padding:3px 8px;cursor:pointer;font:inherit}
+#bar button:hover{background:#4a4a4a}
 #tabs button.on{background:#c8a24a;color:#111}
-#wrap{position:absolute;top:34px;bottom:0;left:0;right:0;overflow:auto}
-#wrap svg{width:100%;height:auto;background:#fff}
+#zoom{display:flex;gap:4px;align-items:center}
+#zoom button{min-width:26px}#zl{min-width:44px;text-align:center;opacity:.8}
+#wrap{flex:1;min-height:0;overflow:auto;display:flex;cursor:grab}
+#wrap.drag{cursor:grabbing;user-select:none}
+#wrap svg{flex:none;margin:auto;background:#fff;box-shadow:0 0 6px rgba(0,0,0,.15)}
 #msg{padding:40px;color:#555}
 </style></head><body>
-<div id="bar"><b id="proj">&hellip;</b><span id="tabs"></span><span id="st"></span></div>
+<div id="bar"><b id="proj">&hellip;</b><span id="tabs"></span>
+<span id="zoom"><button id="zo" title="Verkleinern (-)">&minus;</button><span id="zl"></span>
+<button id="zi" title="Vergr&ouml;&szlig;ern (+)">+</button>
+<button id="zf" title="An Fenster anpassen (0)">An Fenster anpassen</button></span>
+<span id="st"></span></div>
 <div id="wrap"><div id="msg">Warte auf KiCad-Projekt &hellip;</div></div>
 <script>
-let ver=-1, sel=0, names=[];
+const W=document.getElementById('wrap'), MM=96/25.4, PAD=16;
+let ver=-1, sel=0, names=[], scale=1, fit=true;
+function svg(){return W.querySelector('svg');}
+function dims(s){const v=s.viewBox&&s.viewBox.baseVal;
+ if(v&&v.width&&v.height)return [v.width,v.height];
+ if(!s._d){const r=s.getBoundingClientRect();s._d=[r.width/MM,r.height/MM];}return s._d;}
+function fitScale(){const s=svg();if(!s)return 1;const [w,h]=dims(s);
+ return Math.max(0.01,Math.min((W.clientWidth-PAD)/w,(W.clientHeight-PAD)/h));}
+function apply(){const s=svg();if(!s){document.getElementById('zl').textContent='';return;}
+ if(fit)scale=fitScale();const [w,h]=dims(s);
+ s.style.width=(w*scale)+'px';s.style.height=(h*scale)+'px';
+ document.getElementById('zl').textContent=Math.round(scale/MM*100)+'%';}
+function zoomAt(f,cx,cy){const s=svg();if(!s)return;
+ if(cx===undefined){cx=W.clientWidth/2;cy=W.clientHeight/2;}
+ const wr=W.getBoundingClientRect(), r=s.getBoundingClientRect();
+ const px=(cx-(r.left-wr.left))/scale, py=(cy-(r.top-wr.top))/scale;
+ const fs=fitScale();scale=Math.min(MM*40,Math.max(fs/4,scale*f));fit=false;apply();
+ const r2=s.getBoundingClientRect();
+ W.scrollLeft+=(r2.left-wr.left)+px*scale-cx;W.scrollTop+=(r2.top-wr.top)+py*scale-cy;}
+function fitView(){fit=true;apply();}
+document.getElementById('zi').onclick=()=>zoomAt(1.25);
+document.getElementById('zo').onclick=()=>zoomAt(1/1.25);
+document.getElementById('zf').onclick=fitView;
+W.addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();
+ let d=e.deltaY*(e.deltaMode===1?33:e.deltaMode===2?400:1);d=Math.max(-200,Math.min(200,d));
+ const wr=W.getBoundingClientRect();zoomAt(Math.exp(-d*0.002),e.clientX-wr.left,e.clientY-wr.top);},{passive:false});
+document.addEventListener('keydown',e=>{if(e.altKey||e.metaKey)return;
+ if(e.key==='+'||e.key==='='){zoomAt(1.25);e.preventDefault();}
+ else if(e.key==='-'||e.key==='_'){zoomAt(1/1.25);e.preventDefault();}
+ else if(e.key==='0'){fitView();e.preventDefault();}});
+let drag=null;
+W.addEventListener('mousedown',e=>{if(e.button>1)return;e.preventDefault();
+ drag={x:e.clientX,y:e.clientY,l:W.scrollLeft,t:W.scrollTop};W.classList.add('drag');});
+addEventListener('mousemove',e=>{if(!drag)return;
+ W.scrollLeft=drag.l-(e.clientX-drag.x);W.scrollTop=drag.t-(e.clientY-drag.y);});
+addEventListener('mouseup',()=>{drag=null;W.classList.remove('drag');});
+W.addEventListener('dblclick',fitView);
+addEventListener('resize',()=>{if(fit)apply();});
 function tabs(){const t=document.getElementById('tabs');t.innerHTML='';
  if(names.length<2)return;names.forEach((n,i)=>{const b=document.createElement('button');
- b.textContent=n;if(i===sel)b.className='on';b.onclick=()=>{sel=i;tabs();load();};t.appendChild(b);});}
-async function load(){if(!names.length){document.getElementById('wrap').innerHTML=
- '<div id="msg">Kein offenes KiCad-Projekt gefunden.</div>';return;}
- const r=await fetch('/svg/'+sel+'?v='+ver);document.getElementById('wrap').innerHTML=await r.text();}
+ b.textContent=n;if(i===sel)b.className='on';b.onclick=()=>{sel=i;fit=true;tabs();load();};t.appendChild(b);});}
+async function load(){if(!names.length){W.innerHTML=
+ '<div id="msg">Kein offenes KiCad-Projekt gefunden.</div>';apply();return;}
+ const r=await fetch('/svg/'+sel+'?v='+ver);const txt=await r.text();
+ const l=W.scrollLeft,t=W.scrollTop;W.innerHTML=txt;apply();
+ if(!fit){W.scrollLeft=l;W.scrollTop=t;}}
 async function tick(){try{const s=await (await fetch('/state')).json();
  document.getElementById('proj').textContent=s.project||'kein Projekt';
  document.title=(s.project||'Schaltplan')+' \\u00b7 Live';
