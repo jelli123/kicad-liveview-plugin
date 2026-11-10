@@ -20,6 +20,20 @@
       ],
       "versions": [
         {
+          "version": "1.3.0",
+          "status": "stable",
+          "kicad_version": "9.0",
+          "platforms": [
+            "linux",
+            "windows",
+            "macos"
+          ],
+          "download_url": "https://github.com/jelli123/kicad-liveview-plugin/releases/download/v1.3.0/schematic-liveview-1.3.0.zip",
+          "download_sha256": "6a4602c34b0bce88e5d8074ecedf02fa286b8c4e24657f1d3422d4d1e549a3c0",
+          "download_size": 34191,
+          "install_size": 33605
+        },
+        {
           "version": "1.2.2",
           "status": "stable",
           "kicad_version": "9.0",

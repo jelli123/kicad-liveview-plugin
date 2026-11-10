@@ -10,9 +10,14 @@ Alle Hierarchie-Blätter sind über Reiter erreichbar.
 
 - KiCad lädt das Plugin, sobald seine Python-Umgebung startet (spätestens beim
   Öffnen des PCB-Editors). Dabei wird der Server im Hintergrund gestartet.
-- Der Server ermittelt das aktive Projekt selbst: den ersten Eintrag der
-  KiCad-Dateihistorie, für den eine Lockdatei `~<name>.kicad_pro.lck` existiert.
-  Ein Projektwechsel wird automatisch erkannt. Es gibt keine Konfiguration.
+- Der Server ermittelt die offenen Projekte selbst (Lockdatei
+  `~<name>.kicad_pro.lck`): aus den Projektordnern, die das Plugin jeder
+  KiCad-Instanz alle 5 s meldet, den Arbeitsordnern der KiCad-Prozesse (Linux)
+  und der KiCad-Dateihistorie. Ein Projektwechsel wird automatisch erkannt.
+  Es gibt keine Konfiguration.
+- Mehrere KiCad-Instanzen: Sind mehrere Projekte offen, erscheint in der
+  Kopfzeile eine Projektauswahl. Der Toolbar-Knopf öffnet die Ansicht des
+  Projekts seiner Instanz (`http://localhost:8765/?p=<id>`).
 - Läuft kein KiCad-Prozess mehr, beendet sich der Server nach etwa 20 s.
 - Der Toolbar-Knopf im PCB-Editor startet den Server bei Bedarf und öffnet die
   Ansicht im Standardbrowser.
@@ -138,9 +143,14 @@ hierarchical sheets are available as tabs.
 
 - KiCad loads the plugin as soon as its Python environment starts (at the
   latest when the PCB editor opens). This starts the server in the background.
-- The server finds the active project on its own: the first entry of KiCad's
-  file history that has a lock file `~<name>.kicad_pro.lck`. Switching projects
-  is detected automatically. There is nothing to configure.
+- The server finds the open projects on its own (lock file
+  `~<name>.kicad_pro.lck`): from the project folders reported every 5 s by the
+  plugin in each KiCad instance, the working folders of the KiCad processes
+  (Linux) and KiCad's file history. Switching projects is detected
+  automatically. There is nothing to configure.
+- Multiple KiCad instances: when several projects are open, a project selector
+  appears in the header. The toolbar button opens the view of its own
+  instance's project (`http://localhost:8765/?p=<id>`).
 - When no KiCad process is running any more, the server exits after about 20 s.
 - The toolbar button in the PCB editor starts the server if needed and opens
   the view in your default browser.

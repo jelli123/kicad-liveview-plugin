@@ -5,14 +5,17 @@ Kleiner HTTP-Server, der den Schaltplan des aktuell in KiCad geoeffneten
 Projekts per kicad-cli als SVG exportiert und im Browser anzeigt. Die Seite
 aktualisiert sich selbst, sobald eine .kicad_sch-Datei gespeichert wird.
 
-- Aktives Projekt: erster Eintrag der KiCad-Dateihistorie (kicad.json), fuer
-  den eine Projekt-Lockdatei (~<name>.kicad_pro.lck) existiert.
+- Offene Projekte (mehrere KiCad-Instanzen moeglich): Projekte mit
+  Lockdatei (~<name>.kicad_pro.lck) aus den Ordnern, die das Plugin jeder
+  Instanz meldet, den Arbeitsordnern der KiCad-Prozesse (Linux) und der
+  KiCad-Dateihistorie (kicad.json). Die Seite bietet eine Projektauswahl.
 - Beendet sich selbst, wenn kein KiCad-Prozess mehr laeuft.
 - Startet nur einmal: ist der Port belegt, endet der zweite Start sofort.
 - Linux, Windows und macOS.
 """
 import argparse
 import glob
+import hashlib
 import html
 import http.server
 import json
@@ -24,22 +27,23 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.parse
 
-VERSION = "1.2.2"
+VERSION = "1.3.0"
 KICAD_PROCS = {"kicad", "eeschema", "pcbnew"}
 IDLE_EXIT_S = 20
+REGISTER_TTL_S = 30   # Meldung eines Plugins gilt so lange (Heartbeat alle 5 s)
 IS_WIN = sys.platform == "win32"
 IS_MAC = sys.platform == "darwin"
 # Unter Windows kein Konsolenfenster fuer Hilfsprozesse aufblitzen lassen.
 NO_WINDOW = subprocess.CREATE_NO_WINDOW if IS_WIN else 0
 
 state = {
-    "project": None,      # Pfad zur .kicad_pro
-    "sch": None,          # Pfad zur Root-.kicad_sch
-    "sig": None,          # Signatur der mtimes aller .kicad_sch
-    "ver": 0,
-    "sheets": [],         # [(name, svg-bytes)]
-    "error": "",
+    "projects": {},       # id -> Projekt (siehe new_project)
+    "seq": 0,             # Zaehler fuer die Reihenfolge (neueste zuerst)
+    "active": None,       # zuletzt per Toolbar-Knopf gewaehltes Projekt
+    "registered": {},     # Ordner -> Zeitpunkt der letzten Plugin-Meldung
+    "error": "",          # allgemeiner Fehler des Beobachters
     "frame": True,        # Blattrahmen mit exportieren
 }
 lock = threading.Lock()
@@ -114,19 +118,75 @@ def output_dir():
 # --------------------------------------------------------------------------
 # KiCad-Zustand
 # --------------------------------------------------------------------------
-def active_project():
+def _is_open(pro):
+    pdir, name = os.path.split(pro)
+    return (pro.endswith(".kicad_pro") and os.path.exists(pro)
+            and os.path.exists(os.path.join(pdir, "~" + name + ".lck")))
+
+
+def history_projects():
+    """Offene Projekte aus der KiCad-Dateihistorie (nur eine Instanz schreibt sie)."""
     for d in kicad_config_dirs():
         try:
             with open(os.path.join(d, "kicad.json"), encoding="utf-8") as f:
                 hist = json.load(f).get("system", {}).get("file_history", [])
         except (OSError, ValueError):
             continue
-        for pro in hist:
-            pdir, name = os.path.split(pro)
-            lck = os.path.join(pdir, "~" + name + ".lck")
-            if pro.endswith(".kicad_pro") and os.path.exists(pro) and os.path.exists(lck):
-                return pro
-    return None
+        found = [p for p in hist if _is_open(p)]
+        if found:
+            return found
+    return []
+
+
+def active_project():
+    found = history_projects()
+    return found[0] if found else None
+
+
+def projects_in(d):
+    """Offene Projekte (mit Lockdatei) in einem Ordner."""
+    out = []
+    for lck in sorted(glob.glob(os.path.join(glob.escape(d), "~*.kicad_pro.lck"))):
+        pro = os.path.join(d, os.path.basename(lck)[1:-4])
+        if _is_open(pro):
+            out.append(pro)
+    return out
+
+
+def process_dirs():
+    """Arbeitsordner der KiCad-Prozesse (nur Linux; KiCad wechselt in den Projektordner)."""
+    dirs = []
+    for comm in glob.glob("/proc/[0-9]*/comm"):
+        try:
+            with open(comm) as f:
+                if f.read().strip().lower() not in KICAD_PROCS:
+                    continue
+            dirs.append(os.readlink(os.path.join(os.path.dirname(comm), "cwd")))
+        except OSError:
+            pass
+    return dirs
+
+
+def open_projects():
+    """Alle offenen Projekte, ohne Duplikate."""
+    now = time.time()
+    with lock:
+        reg = [d for d, t in state["registered"].items() if now - t < REGISTER_TTL_S]
+    cands = []
+    for d in reg + process_dirs():
+        cands += projects_in(d)
+    cands += history_projects()
+    seen, out = set(), []
+    for p in cands:
+        k = os.path.normcase(os.path.abspath(p))
+        if k not in seen:
+            seen.add(k)
+            out.append(os.path.abspath(p))
+    return out
+
+
+def project_id(path):
+    return hashlib.sha1(os.path.normcase(path).encode("utf-8")).hexdigest()[:10]
 
 
 def _process_names():
@@ -154,7 +214,7 @@ def kicad_running():
         return bool(KICAD_PROCS & _process_names())
     except Exception:
         # Prozessliste nicht lesbar: offenes Projekt gilt als Lebenszeichen.
-        return active_project() is not None
+        return active_project() is not None or bool(state["projects"])
 
 
 def sch_signature(sch):
@@ -199,27 +259,47 @@ def worker(fixed_sch, cli, out):
                 os._exit(0)
 
             if fixed_sch:
-                pro, sch = None, fixed_sch
+                cands = [(None, os.path.abspath(fixed_sch))]
             else:
-                pro = active_project()
-                sch = os.path.splitext(pro)[0] + ".kicad_sch" if pro else None
+                cands = [(p, os.path.splitext(p)[0] + ".kicad_sch") for p in open_projects()]
+            cands = [(p, sch) for p, sch in cands if os.path.exists(sch)]
+            ids = {project_id(sch): (p, sch) for p, sch in cands}
 
-            if sch and os.path.exists(sch):
+            with lock:
+                for i in list(state["projects"]):
+                    if i not in ids:  # Projekt geschlossen
+                        del state["projects"][i]
+                        shutil.rmtree(os.path.join(out, i), ignore_errors=True)
+                for i, (p, sch) in reversed(list(ids.items())):
+                    if i not in state["projects"]:  # neu: vor die bisherigen
+                        state["seq"] += 1
+                        state["projects"][i] = dict(project=p, sch=sch, sig=None, ver=0,
+                                                    sheets=[], error="", seq=state["seq"])
+            for i, (p, sch) in ids.items():
+                prj = state["projects"].get(i)
                 frame = state["frame"]
                 sig = (frame,) + sch_signature(sch)  # Umschalten des Rahmens = neu exportieren
-                if sch != state["sch"] or sig != state["sig"]:
-                    time.sleep(0.3)  # Speichervorgang abwarten
-                    sheets, err = export(cli, sch, out, frame)
-                    with lock:
-                        state.update(project=pro, sch=sch, sig=sig, sheets=sheets,
-                                     error=err, ver=state["ver"] + 1)
-            elif state["sch"] is not None:
+                if prj is None or sig == prj["sig"]:
+                    continue
+                time.sleep(0.3)  # Speichervorgang abwarten
+                d = os.path.join(out, i)
+                os.makedirs(d, exist_ok=True)
+                sheets, err = export(cli, sch, d, frame)
                 with lock:
-                    state.update(project=None, sch=None, sig=None, sheets=[],
-                                 error="", ver=state["ver"] + 1)
+                    prj.update(sig=sig, sheets=sheets, error=err, ver=prj["ver"] + 1)
+            state["error"] = ""
         except Exception as e:  # weiter beobachten
             state["error"] = str(e)
         time.sleep(1)
+
+
+def selected(pid):
+    """Gewuenschtes Projekt, sonst das zuletzt gewaehlte bzw. zuletzt geoeffnete."""
+    prjs = state["projects"]
+    for i in (pid, state["active"]):
+        if i in prjs:
+            return i
+    return max(prjs, key=lambda i: prjs[i]["seq"]) if prjs else None
 
 
 # --------------------------------------------------------------------------
@@ -232,7 +312,8 @@ PAGE = """<!doctype html><html lang="de"><head><meta charset="utf-8">
 html,body{margin:0;height:100%;background:#f5f4ee;font:13px system-ui,sans-serif}
 body{display:flex;flex-direction:column}
 #bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 10px;background:#222;color:#ddd}
-#bar b{color:#fff}#st{margin-left:auto;opacity:.7}#ver{opacity:.5}
+#bar b{color:#fff}
+#pj{background:#3a3a3a;color:#fff;border:0;border-radius:3px;padding:3px 6px;font:inherit;font-weight:bold;max-width:40ch}#st{margin-left:auto;opacity:.7}#ver{opacity:.5}
 #bar button{background:#3a3a3a;color:#ddd;border:0;border-radius:3px;padding:3px 8px;cursor:pointer;font:inherit}
 #bar button:hover{background:#4a4a4a}
 #tabs button.on,#bar #fr.on{background:#c8a24a;color:#111}#bar #fr:disabled{opacity:.5;cursor:wait}
@@ -243,7 +324,7 @@ body{display:flex;flex-direction:column}
 #wrap svg{flex:none;margin:auto;background:#fff;box-shadow:0 0 6px rgba(0,0,0,.15)}
 #msg{padding:40px;color:#555}
 </style></head><body>
-<div id="bar"><b id="proj">&hellip;</b><span id="tabs"></span>
+<div id="bar"><b id="proj">&hellip;</b><select id="pj" hidden></select><span id="tabs"></span>
 <span id="zoom"><button id="zo">&minus;</button><button id="zl"></button>
 <button id="zi">+</button><button id="zf"></button></span>
 <button id="fr"></button>
@@ -253,11 +334,11 @@ body{display:flex;flex-direction:column}
 // Sprache: Deutsch, wenn der Browser Deutsch bevorzugt, sonst Englisch.
 const DE=/^de/i.test((navigator.languages&&navigator.languages[0])||navigator.language||'');
 const T=DE?{fr:'Rahmen',frt:'Blattrahmen ein-/ausblenden',zo:'Verkleinern (-)',zl:'Originalgröße 100 %',zi:'Vergrößern (+)',zf:'An Fenster anpassen',zfk:'An Fenster anpassen (0, Doppelklick)',
- wait:'Warte auf KiCad-Projekt …',none:'Kein offenes KiCad-Projekt gefunden.',noproj:'kein Projekt',
+ wait:'Warte auf KiCad-Projekt …',pj:'Projekt wählen (offene KiCad-Projekte)',none:'Kein offenes KiCad-Projekt gefunden.',noproj:'kein Projekt',
  sch:'Schaltplan',err:'Fehler: ',at:'Stand ',gone:'Server beendet (KiCad geschlossen?)',
  'kicad-cli not found':'kicad-cli nicht gefunden'}
 :{fr:'Frame',frt:'Show/hide drawing sheet',zo:'Zoom out (-)',zl:'Actual size 100 %',zi:'Zoom in (+)',zf:'Fit to window',zfk:'Fit to window (0, double-click)',
- wait:'Waiting for KiCad project …',none:'No open KiCad project found.',noproj:'no project',
+ wait:'Waiting for KiCad project …',pj:'Choose project (open KiCad projects)',none:'No open KiCad project found.',noproj:'no project',
  sch:'Schematic',err:'Error: ',at:'Updated ',gone:'Server stopped (KiCad closed?)'};
 document.documentElement.lang=DE?'de':'en';
 document.getElementById('zo').title=T.zo;document.getElementById('zl').title=T.zl;document.getElementById('zi').title=T.zi;
@@ -271,6 +352,10 @@ function setFrame(on){frame=on;try{localStorage.setItem('frame',on?'1':'0');}cat
 FR.onclick=()=>setFrame(!FR.classList.contains('on'));
 const W=document.getElementById('wrap'), MM=96/25.4, PAD=16, VER='%VERSION%';
 let ver=-1, sel=0, names=[], scale=1, fit=true;
+// Projekt-ID aus der URL (?p=...); leer = zuletzt gewaehltes/geoeffnetes Projekt.
+let P=new URLSearchParams(location.search).get('p')||'', cur=null, plist='';
+const PJ=document.getElementById('pj');PJ.title=T.pj;
+PJ.onchange=()=>{P=PJ.value;history.replaceState(null,'','?p='+encodeURIComponent(P));tick();};
 function svg(){return W.querySelector('svg');}
 function dims(s){const v=s.viewBox&&s.viewBox.baseVal;
  if(v&&v.width&&v.height)return [v.width,v.height];
@@ -313,11 +398,15 @@ function tabs(){const t=document.getElementById('tabs');t.innerHTML='';
  b.textContent=n;if(i===sel)b.className='on';b.onclick=()=>{sel=i;fit=true;tabs();load();};t.appendChild(b);});}
 async function load(){if(!names.length){W.innerHTML=
  '<div id="msg"></div>';W.firstChild.textContent=T.none;apply();return;}
- const r=await fetch('/svg/'+sel+'?v='+ver);const txt=await r.text();
+ const r=await fetch('/svg/'+cur+'/'+sel+'?v='+ver);const txt=await r.text();
  const l=W.scrollLeft,t=W.scrollTop;W.innerHTML=txt;apply();
  if(!fit){W.scrollLeft=l;W.scrollTop=t;}}
-async function tick(){try{const s=await (await fetch('/state')).json();
+async function tick(){try{const s=await (await fetch('/state'+(P?'?p='+encodeURIComponent(P):''))).json();
  if(s.version!==VER){location.reload();return;}
+ if(s.id!==cur){cur=s.id;ver=-1;sel=0;fit=true;}
+ const pl=JSON.stringify(s.projects);if(pl!==plist){plist=pl;PJ.innerHTML='';
+  s.projects.forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;o.title=p.path;PJ.appendChild(o);});}
+ PJ.value=s.id||'';PJ.hidden=s.projects.length<2;document.getElementById('proj').hidden=!PJ.hidden;
  if(frame!==null&&frame!==s.frame)setFrame(frame);
  else FR.disabled=s.frame!==s.frame_shown&&!!s.project;
  FR.classList.toggle('on',frame!==null?frame:s.frame);FR.hidden=!s.project;
@@ -346,23 +435,29 @@ class Handler(http.server.BaseHTTPRequestHandler):
             pass  # Browser hat die Anfrage abgebrochen
 
     def do_GET(self):
-        path = self.path.split("?")[0]
+        url = urllib.parse.urlsplit(self.path)
+        path, q = url.path, urllib.parse.parse_qs(url.query)
         with lock:
             if path == "/state":
-                name = None
-                if state["sch"]:
-                    name = os.path.splitext(os.path.basename(state["sch"]))[0]
-                body = json.dumps({"version": VERSION, "ver": state["ver"], "project": name,
-                                   "sheets": [n for n, _ in state["sheets"]],
+                prjs = state["projects"]
+                order = sorted(prjs, key=lambda i: -prjs[i]["seq"])
+                sel = selected((q.get("p") or [None])[0])
+                prj = prjs.get(sel) or dict(sch=None, sig=None, ver=0, sheets=[], error="")
+                name = lambda p: os.path.splitext(os.path.basename(p["sch"]))[0]
+                body = json.dumps({"version": VERSION, "id": sel, "ver": prj["ver"],
+                                   "project": name(prj) if prj["sch"] else None,
+                                   "projects": [{"id": i, "name": name(prjs[i]),
+                                                 "path": prjs[i]["sch"]} for i in order],
+                                   "sheets": [n for n, _ in prj["sheets"]],
                                    "frame": state["frame"],
-                                   "frame_shown": bool(state["sig"] and state["sig"][0]),
-                                   "error": html.escape(state["error"][:200])})
+                                   "frame_shown": bool(prj["sig"] and prj["sig"][0]),
+                                   "error": html.escape((state["error"] or prj["error"])[:200])})
                 return self.send(body.encode(), "application/json")
-            m = re.fullmatch(r"/svg/(\d+)", path)
+            m = re.fullmatch(r"/svg/(\w+)/(\d+)", path)
             if m:
-                i = int(m.group(1))
-                if i < len(state["sheets"]):
-                    return self.send(state["sheets"][i][1], "image/svg+xml")
+                prj, i = state["projects"].get(m.group(1)), int(m.group(2))
+                if prj and i < len(prj["sheets"]):
+                    return self.send(prj["sheets"][i][1], "image/svg+xml")
                 return self.send(b"", "text/plain", 404)
         self.send(PAGE, "text/html; charset=utf-8")
 
@@ -371,6 +466,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.path == "/quit":
             self.send(b"bye", "text/plain")
             threading.Timer(0.2, os._exit, (0,)).start()
+        elif self.path.startswith("/register?"):
+            # Plugin meldet den Projektordner seiner KiCad-Instanz (Heartbeat).
+            q = urllib.parse.parse_qs(self.path.split("?", 1)[1])
+            d = (q.get("dir") or [""])[0]
+            pid = None
+            if d and os.path.isdir(d):
+                now = time.time()
+                with lock:
+                    reg = state["registered"]
+                    for k in [k for k, t in reg.items() if now - t > REGISTER_TTL_S]:
+                        del reg[k]
+                    reg[os.path.abspath(d)] = now
+                pro = (q.get("pro") or [""])[0]
+                if pro:
+                    pid = project_id(os.path.abspath(os.path.splitext(pro)[0] + ".kicad_sch"))
+                    if q.get("activate"):
+                        state["active"] = pid
+            self.send((pid or "").encode(), "text/plain")
         elif self.path in ("/frame/0", "/frame/1"):
             with lock:
                 state["frame"] = self.path.endswith("1")

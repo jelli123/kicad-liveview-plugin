@@ -9,9 +9,9 @@
   },
   "packages": {
     "url": "https://raw.githubusercontent.com/jelli123/kicad-liveview-plugin/main/pcm/packages.json",
-    "sha256": "5bd78621b38ec634921e62964a4daa64cb0fdca827f7c0265287340fbbf2cebe",
-    "update_timestamp": 1794221718,
-    "update_time_utc": "2026-11-09 10:55:18"
+    "sha256": "4f62c94e081decc2860eb094d528432340464f72e0d0ef430b9c8f44b65ec3e0",
+    "update_timestamp": 1794308905,
+    "update_time_utc": "2026-11-10 11:08:25"
   },
   "resources": {
     "url": "https://raw.githubusercontent.com/jelli123/kicad-liveview-plugin/main/pcm/resources.zip",

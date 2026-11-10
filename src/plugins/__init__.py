@@ -4,8 +4,11 @@ Beim Laden durch KiCad wird im Hintergrund ein kleiner Webserver gestartet
 (http://localhost:8765), der den Schaltplan des gerade geoeffneten Projekts
 anzeigt und bei jedem Speichern aktualisiert. Der Server beendet sich, wenn
 KiCad geschlossen wird. Der Toolbar-Knopf im PCB-Editor oeffnet die Ansicht.
+Bei mehreren KiCad-Instanzen meldet jede ihren Projektordner (Heartbeat);
+der Knopf oeffnet die Ansicht des eigenen Projekts.
 Linux, Windows und macOS.
 """
+import hashlib
 import json
 import os
 import re
@@ -15,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 import webbrowser
 
@@ -25,6 +29,9 @@ URL = "http://localhost:%d" % PORT
 PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
 SERVER = os.path.join(PLUGIN_DIR, "liveview_server.py")
 IS_WIN = sys.platform == "win32"
+HEARTBEAT_MS = 5000
+# Lokaler Server: Proxy-Einstellungen der Umgebung ignorieren.
+_http = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def _plugin_version():
@@ -89,7 +96,7 @@ def _kicad_cli_hint():
 
 def _running_version():
     try:
-        with urllib.request.urlopen(URL + "/state", timeout=1) as r:
+        with _http.open(URL + "/state", timeout=1) as r:
             return json.load(r).get("version")
     except Exception:
         return None
@@ -97,7 +104,7 @@ def _running_version():
 
 def _stop_server():
     try:
-        urllib.request.urlopen(urllib.request.Request(URL + "/quit", data=b"", method="POST"),
+        _http.open(urllib.request.Request(URL + "/quit", data=b"", method="POST"),
                                timeout=1).close()
     except Exception:
         pass  # alte Versionen kennen /quit nicht
@@ -106,6 +113,55 @@ def _stop_server():
             return True
         time.sleep(0.1)
     return False
+
+
+def _register(pro=None, activate=False):
+    """Projektordner dieser KiCad-Instanz beim Server melden."""
+    d = os.path.dirname(pro) if pro else os.getcwd()
+    q = {"dir": d}
+    if pro:
+        q["pro"] = pro
+    if activate:
+        q["activate"] = "1"
+    try:
+        _http.open(urllib.request.Request(URL + "/register?" + urllib.parse.urlencode(q),
+                                          data=b"", method="POST"), timeout=0.5).close()
+    except Exception:
+        pass
+
+
+def _board_project():
+    try:
+        fn = pcbnew.GetBoard().GetFileName()
+    except Exception:
+        return None
+    return os.path.abspath(os.path.splitext(fn)[0] + ".kicad_pro") if fn else None
+
+
+def _project_id(pro):
+    """Wie project_id() im Server: Hash des Root-Schaltplan-Pfads."""
+    sch = os.path.splitext(pro)[0] + ".kicad_sch"
+    return hashlib.sha1(os.path.normcase(sch).encode("utf-8")).hexdigest()[:10]
+
+
+_last_pro = None
+
+
+def _heartbeat(_evt=None):
+    # Arbeitsordner (KiCad wechselt in den Projektordner) und zuletzt per
+    # Knopf gezeigtes Projekt melden.
+    _register()
+    if _last_pro:
+        _register(_last_pro)
+
+
+def _start_heartbeat():
+    import wx
+    global _timer
+    _timer = wx.Timer()
+    _timer.Bind(wx.EVT_TIMER, _heartbeat)
+    _timer.Start(HEARTBEAT_MS)
+    wx.CallLater(1500, _heartbeat)
 
 
 def ensure_server():
@@ -165,13 +221,27 @@ class SchematicLiveView(pcbnew.ActionPlugin):
         self.icon_file_name = os.path.join(PLUGIN_DIR, "icon.png")
 
     def Run(self):
+        global _last_pro
         ensure_server()
-        webbrowser.open(URL)
+        pro = _board_project()
+        if not pro:
+            return webbrowser.open(URL)
+        _last_pro = pro
+        for _ in range(20):  # frisch gestarteter Server braucht einen Moment
+            if _server_running():
+                break
+            time.sleep(0.1)
+        _register(pro, activate=True)
+        webbrowser.open(URL + "/?p=" + _project_id(pro))
 
 
 try:
     ensure_server()
 except Exception as error:  # Plugin trotzdem registrieren
     print("[Schaltplan Live-Ansicht] Serverstart fehlgeschlagen: %s" % error, file=sys.stderr)
+try:
+    _start_heartbeat()
+except Exception as error:
+    print("[Schaltplan Live-Ansicht] Heartbeat nicht gestartet: %s" % error, file=sys.stderr)
 
 SchematicLiveView().register()
